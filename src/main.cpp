@@ -1,19 +1,24 @@
 #include <iostream>
 #include <vector>
-#include "stats.hpp"
+#include <filesystem>
+#include "utility.hpp"
 
 int main() {
-    std::vector<School::Student> classroom = {
-        {"Nguyen Van A", {8.5, 9.0, 7.5}},
-        {"Tran Thi B", {10.0, 9.5, 9.0}},
-        {"Le Van C", {5.0, 6.5}}
-    };
+    try {
+        const auto rows = utility_csv::read_csv("../data/sample.csv");
 
-    std::cout << "=== BANG DIEM HOC SINH ===\n";
+        for (const auto& h : rows.headers) 
+            std::cout << h << " ";
+        std::cout << std::endl;
 
-    for (const auto& student : classroom) {
-        double avg = School::calculate_average(student.scores);
-        std::cout << "Hoc sinh: " << student.name << " | Diem TB: " << avg << std::endl;
+        for (const auto& row : rows.rows) { 
+            for (const auto& cell : row) 
+                std::cout << cell << " ";
+            std::cout << std::endl;
+        }
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
     }
 
     return 0;
