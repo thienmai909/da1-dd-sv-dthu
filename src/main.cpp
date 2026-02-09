@@ -5,21 +5,9 @@
 
 int main() {
     try {
-        const auto rows = utility_csv::read_csv("../data/sample.csv");
+        auto a = utility_input::readIntRangeRetry("Enter value", 10, 20, 3);
 
-        for (const auto& h : rows.headers) 
-            std::cout << h << " ";
-        std::cout << std::endl;
-
-        for (const auto& row : rows.rows) { 
-            for (const auto& cell : row) 
-                std::cout << cell << " ";
-            std::cout << std::endl;
-        }
-
-        // utility_csv::write_csv("../data/out.csv", rows);
-        // std::cout << "Write data success." << std::endl;
-        
+        if (a) std::cout << a.value();
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";

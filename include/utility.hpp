@@ -2,8 +2,20 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <iostream>
 #include <filesystem>
 #include <stdexcept>
+#include <concepts>
+#include <optional>
+#include <limits>
+
+enum class Command {
+    Add, Update, Delete, List, Exit
+};
+
+enum class Option {
+    Ok, None
+};
 
 namespace utility_csv {
 
@@ -106,5 +118,106 @@ namespace utility_csv {
         writer << data.headers;
         for (const auto& row : data.rows) 
             writer << row;
+    }
+}
+
+namespace utility_input {
+    template<std::integral T>
+    struct Range {
+        T _max = std::numeric_limits<T>::max();
+        T _min = std::numeric_limits<T>::min();
+
+        constexpr Range (T min, T max) : _min(min), _max(max) {}
+        constexpr Range () {}
+    };
+
+    struct Options {
+        Option allowEmpty = Option::None;  //cho trả về trống
+        Option allowCancel = Option::None; //cho hủy nhập
+        int maxRetry = -1;        //số lần lặp lại, -1 là không lặp
+
+        constexpr Options(int retry) : maxRetry(retry) {}
+        constexpr Options() {}
+    };
+
+    std::optional<int> readInt(
+        const std::string& prompt = "",
+        std::optional<Range<int>> range = std::nullopt,
+        std::optional<Options> options = std::nullopt
+    ) {
+        Options opt;
+        if (options.has_value()) opt = *options;
+
+        int retry = 0;
+        while (true) {
+            if (!prompt.empty()) {
+                std::cout << prompt;
+                if (opt.allowCancel == Option::Ok) std::cout << " (q = cancel)";
+                std::cout << ": ";
+            }
+
+            std::string input;
+            std::getline(std::cin, input);
+            
+            if (opt.allowCancel == Option::Ok && input == "q")
+                return std::nullopt;
+
+            if (input.empty()) {
+                if (opt.allowEmpty == Option::Ok)
+                    return std::nullopt;
+                std::cout << "Not empty!\n";
+                goto retry_check;    
+            }
+            
+            try {
+                std::size_t pos;
+                int value = std::stoi(input, &pos);
+
+                if (pos != input.size())
+                    throw std::invalid_argument("Invalid.\n");
+                
+                if (range.has_value())
+                    if (value < range->_min || value > range->_max) {
+                        std::cout << "Range[" << range->_min << ", " << range->_max << "]\n";
+                        goto retry_check;
+                    }
+                return value;
+
+            } catch(...) {
+                std::cout << "Invalid.\n";
+            }
+
+            retry_check:
+            if (opt.maxRetry != -1 && ++retry >= opt.maxRetry)
+                return std::nullopt;
+        }
+    }
+
+    inline std::optional<int> readInt(const std::string& prompt) {
+        
+        return readInt(prompt, std::nullopt, Options());
+    }
+
+    inline std::optional<int> readIntRange(
+        const std::string& prompt,
+        int min, int max
+    ) {
+        return readInt(prompt, Range<int>(min, max), std::nullopt);
+    }
+
+    inline std::optional<int> readIntRangeRetry(
+        const std::string& prompt,
+        int min, int max, int retry
+    ) {
+        return readInt(prompt, Range<int>(min, max), Options(retry));
+    }
+
+    inline std::optional<int> readIntCancelable(
+        const std::string& prompt,
+        int min, int max
+    ) {
+        Options opt;
+        opt.allowCancel = Option::Ok;
+        return readInt(prompt, Range<int>(min, max), opt);
     }
 }
