@@ -17,6 +17,10 @@ int main() {
             std::cout << std::endl;
         }
 
+        // utility_csv::write_csv("../data/out.csv", rows);
+        // std::cout << "Write data success." << std::endl;
+        
+
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
     }
