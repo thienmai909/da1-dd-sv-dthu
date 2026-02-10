@@ -1,3 +1,0 @@
-D:/C++/da1-dd-sv-dthu/build/CMakeFiles/diemdanh.dir
-D:/C++/da1-dd-sv-dthu/build/CMakeFiles/edit_cache.dir
-D:/C++/da1-dd-sv-dthu/build/CMakeFiles/rebuild_cache.dir

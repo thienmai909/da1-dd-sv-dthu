@@ -8,6 +8,7 @@
 #include <concepts>
 #include <optional>
 #include <limits>
+#include <charconv>
 
 enum class Command {
     Add, Update, Delete, List, Exit
@@ -122,12 +123,23 @@ namespace utility_csv {
 }
 
 namespace utility_input {
-    template<std::integral T>
+    template <typename T>
+    concept int_or_float = std::is_integral_v<T> || std::is_floating_point_v<T>;
+
+    template <typename T>
+    concept int_or_float_or_string = std::is_integral_v<T> || 
+                                     std::is_floating_point_v<T> ||
+                                     std::convertible_to<T, std::string>;
+
+    template <int_or_float T>
     struct Range {
         T _max = std::numeric_limits<T>::max();
         T _min = std::numeric_limits<T>::min();
+        bool _enabled = true;
 
+        constexpr Range (T min, T max, bool enabled) : _min(min), _max(max), _enabled(enabled) {}
         constexpr Range (T min, T max) : _min(min), _max(max) {}
+        constexpr Range (bool enabled) : _enabled(enabled) {}
         constexpr Range () {}
     };
 
@@ -136,88 +148,174 @@ namespace utility_input {
         Option allowCancel = Option::None; //cho hủy nhập
         int maxRetry = -1;        //số lần lặp lại, -1 là không lặp
 
+        constexpr Options(Option empty, Option cancel, int retry) : allowEmpty(empty), allowCancel(cancel), maxRetry(retry) {}
+        constexpr Options(Option empty, Option cancel) : allowEmpty(empty), allowCancel(cancel) {}
         constexpr Options(int retry) : maxRetry(retry) {}
         constexpr Options() {}
     };
 
-    std::optional<int> readInt(
-        const std::string& prompt = "",
-        std::optional<Range<int>> range = std::nullopt,
-        std::optional<Options> options = std::nullopt
-    ) {
-        Options opt;
-        if (options.has_value()) opt = *options;
+    struct Prompt {
+        std::string text;
 
-        int retry = 0;
-        while (true) {
-            if (!prompt.empty()) {
-                std::cout << prompt;
-                if (opt.allowCancel == Option::Ok) std::cout << " (q = cancel)";
-                std::cout << ": ";
+        bool showCancelHint = true;
+        bool showRetryHint  = true;
+        bool showRangeHint  = true;
+
+        constexpr Prompt(const std::string& t) : text(t) {}
+        constexpr Prompt() = default;
+    };
+
+    template <int_or_float T>
+    void showRangeHint(const Range<T>& range) {
+        if (!range._enabled) return;
+        std::cout << "  [Range: " << range._min << ".." << range._max << "]";
+    }
+
+    template <typename T>
+    bool parse(const std::string&, T&) {
+        static_assert(sizeof(T) == 0, "parse<T>: unsupported type");
+        return false;
+    }
+
+    template <int_or_float T>
+    bool parse(const std::string& input, T& out) {
+        T value{};
+        auto [ptr, ec] = std::from_chars(
+            input.data(), input.data() + input.size(), value
+        );
+
+        if (ec != std::errc{}) return false;
+        if (ptr != input.data() + input.size()) return false;
+
+        out = value;
+        return true;
+    }
+
+    template <>
+    bool parse<std::string>(const std::string& input, std::string& out) {
+        if (input.empty()) return false;
+        out = input;
+        return true;
+    }
+
+    template <int_or_float_or_string T>
+    bool validate(const T&) {
+        return true;
+    }
+
+    template <int_or_float T>
+    bool validate(const T& value, const Range<T>& range) {
+        if (!range._enabled) return true;
+        return value >= range._min && value <= range._max;
+    }
+
+    template <int_or_float In, int_or_float_or_string Out>
+    std::optional<Out> readCore(
+        const Prompt& prompt,
+        const Range<In>& range,
+        const Options& opt
+    ) {
+        std::string input;
+        int retry = 1;
+
+        while (opt.maxRetry < 0 || retry <= opt.maxRetry) {
+            if (!prompt.text.empty()){
+                if (prompt.showRetryHint || prompt.showRangeHint || prompt.showCancelHint)
+                    std::cout << "Note:";
+
+                if constexpr (int_or_float<Out>)
+                    if (prompt.showRangeHint)
+                        showRangeHint(range);
+
+                if (prompt.showCancelHint && opt.allowCancel == Option::Ok)
+                    std::cout << "  (type 'cancel' to cancel)";
+                
+                if (prompt.showRetryHint && opt.maxRetry > 0) {
+                    std::cout << "  [retry " << retry << "/" << opt.maxRetry << "]";
+                }
+                if ((prompt.showRetryHint || prompt.showRangeHint || prompt.showCancelHint))
+                    std::cout << std::endl;
             }
 
-            std::string input;
-            std::getline(std::cin, input);
-            
-            if (opt.allowCancel == Option::Ok && input == "q")
+            std::cout << prompt.text;
+
+            if (!std::getline(std::cin, input)) 
                 return std::nullopt;
+
+            if (opt.allowCancel == Option::Ok && input == "cancel") {
+                std::cout << "Enter cancelled.\n";
+                return std::nullopt;
+            }
 
             if (input.empty()) {
-                if (opt.allowEmpty == Option::Ok)
+                if (opt.allowEmpty == Option::Ok) {
+                    std::cout << "Accept empty.\n";
                     return std::nullopt;
-                std::cout << "Not empty!\n";
-                goto retry_check;    
-            }
-            
-            try {
-                std::size_t pos;
-                int value = std::stoi(input, &pos);
-
-                if (pos != input.size())
-                    throw std::invalid_argument("Invalid.\n");
-                
-                if (range.has_value())
-                    if (value < range->_min || value > range->_max) {
-                        std::cout << "Range[" << range->_min << ", " << range->_max << "]\n";
-                        goto retry_check;
-                    }
-                return value;
-
-            } catch(...) {
-                std::cout << "Invalid.\n";
+                }
+                std::cout << "Not empty.\n";
+                ++retry;
+                continue;
             }
 
-            retry_check:
-            if (opt.maxRetry != -1 && ++retry >= opt.maxRetry)
-                return std::nullopt;
+            Out value{};
+            if (!parse<Out>(input, value)) {
+                std::cout << "Wrong format.\n";
+                ++retry;
+                continue;
+            }
+
+            if constexpr (int_or_float<Out>)
+                if (!validate(value, range)) {
+                    std::cout << "Out range.\n";
+                    ++retry;
+                    continue;
+                }
+
+            return value;
         }
+        std::cout << "Exceeded the allowed number of times.\n";
+        return std::nullopt;
     }
 
-    inline std::optional<int> readInt(const std::string& prompt) {
-        
-        return readInt(prompt, std::nullopt, Options());
-    }
-
-    inline std::optional<int> readIntRange(
+    template <std::integral T>
+    inline std::optional<T> readInt(
         const std::string& prompt,
-        int min, int max
+        T min = std::numeric_limits<T>::min(),
+        T max = std::numeric_limits<T>::max(),
+        const Options& opt = {}
     ) {
-        return readInt(prompt, Range<int>(min, max), std::nullopt);
+        Prompt p{ prompt };
+        Range<T> r{ min, max, true };
+        return readCore<T, T>(p, r, opt);
     }
 
-    inline std::optional<int> readIntRangeRetry(
+    template <std::floating_point T>
+    inline std::optional<T> readFloat(
         const std::string& prompt,
-        int min, int max, int retry
+        T min = std::numeric_limits<T>::lowest(),
+        T max = std::numeric_limits<T>::max(),
+        const Options& opt = {}
     ) {
-        return readInt(prompt, Range<int>(min, max), Options(retry));
+        Prompt p{ prompt };
+        Range<T> r{ min, max, true };
+        return readCore<T, T>(p, r, opt);
     }
 
-    inline std::optional<int> readIntCancelable(
+    inline std::optional<std::string> readString(
         const std::string& prompt,
-        int min, int max
+        bool empty = false
     ) {
-        Options opt;
-        opt.allowCancel = Option::Ok;
-        return readInt(prompt, Range<int>(min, max), opt);
+        Prompt p{ prompt };
+        p.showRetryHint = false;
+        p.showRangeHint = false;
+        p.showCancelHint = false;
+
+        Range<int> dummyRange{ false };
+
+        Options opt{};
+        opt.allowEmpty = empty ? Option::Ok : Option::None;
+        opt.allowCancel = Option::None;
+
+        return readCore<int, std::string>(p, dummyRange, opt);
     }
 }
