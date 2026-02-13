@@ -2,13 +2,15 @@
 
 ## build
 # ubuntu
-mkdir build
-cd build
-cmake ..
-make
+- sudo apt install libsodium-dev pkg-config /
+
+mkdir build /
+cd build /
+cmake .. /
+make /
 
 # windows
-mkdir build
-cd build
-cmake ..
-cmake --build .
+mkdir build /
+cd build /
+cmake .. /
+cmake --build . /

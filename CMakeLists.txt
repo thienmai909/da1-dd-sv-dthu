@@ -27,8 +27,11 @@ if(WIN32)
         $<TARGET_FILE_DIR:models>
     )
 else()
-    find_package(sodium REQUIRED)
-    target_link_libraries(models PRIVATE sodium)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SODIUM REQUIRED libsodium)
+
+    target_include_directories(models PRIVATE ${SODIUM_INCLUDE_DIRS})
+    target_link_libraries(models PRIVATE ${SODIUM_LIBRARIES})
 endif()
 
 
